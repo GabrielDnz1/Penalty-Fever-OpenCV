@@ -1,0 +1,3 @@
+C:/Users/diniz/trabalhodederzu/faceDetect/build/CMakeFiles/FACEDETECT.dir
+C:/Users/diniz/trabalhodederzu/faceDetect/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/diniz/trabalhodederzu/faceDetect/build/CMakeFiles/ZERO_CHECK.dir
