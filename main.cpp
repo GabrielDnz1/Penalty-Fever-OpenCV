@@ -156,14 +156,7 @@ int main() {
         resize(frame, cameraROI, Size(cameraWidth, cameraHeight));
 
         imshow("Imagem com Círculo e Setas", image);
-
-        int key = waitKey(30);
-
-        if (key == 'q') {
-            break;
-        }
     }
-
     destroyAllWindows();
     return 0;
 }
