@@ -4,6 +4,7 @@
 #include "opencv2/videoio.hpp"
 #include <opencv2/opencv.hpp>
 #include <iostream>
+#include <windows.h>
 
 using namespace std;
 using namespace cv;
@@ -21,33 +22,32 @@ int main() {
         return -1;
     }
 
-    Mat setaDirecao = imread("C:/Users/diniz/trabalhodederzu/faceDetect/src/files/Setadirecao.png", IMREAD_UNCHANGED);
-    if (setaDirecao.empty()) {
-        cerr << "Não foi possível carregar a imagem da seta Direcao." << endl;
+    Mat goalkeeper = imread("C:/Users/diniz/trabalhodederzu/faceDetect/src/files/goleiro.png", IMREAD_UNCHANGED);
+    if (goalkeeper.empty()) {
+        cerr << "Não foi possível carregar a imagem do Goleiro" << endl;
         return -1;
     }
 
     int setaPowerWidth = setaPower.cols;
     int setaPowerHeight = setaPower.rows;
-    int setaDirecaoWidth = setaDirecao.cols;
-    int setaDirecaoHeight = setaDirecao.rows;
+
+    int goalkeeperWidth = goalkeeper.cols;
+    int goalkeeperHeight = goalkeeper.rows;
 
     int novaLarguraPower = 50;
     int novaAlturaPower = 50;
-    int novaLarguraDirecao = 50;
-    int novaAlturaDirecao = 50;
+
+    int novaLarguraGoleiro = 100;
+    int novaAlturaGoleiro = 100;
 
     resize(setaPower, setaPower, Size(novaLarguraPower, novaAlturaPower));
-    resize(setaDirecao, setaDirecao, Size(novaLarguraDirecao, novaAlturaDirecao));
+    resize(goalkeeper, goalkeeper, Size(novaLarguraGoleiro, novaAlturaGoleiro));
 
-    int moveSpeed = 20;
+    int moveSpeedPower = 100;
     int positionXPower = 0;
-    int positionXDirecao = background.cols - setaDirecao.cols;
     int directionPower = 1;
-    int directionDirecao = -1;
 
     int verticalOffsetPower = 2;
-    int verticalOffsetDirecao = 65;
 
     VideoCapture cap(1);
     if (!cap.isOpened()) {
@@ -55,16 +55,13 @@ int main() {
         return -1;
     }
 
-    CascadeClassifier eyeCascade;
-    if (!eyeCascade.load("C:/Users/diniz/trabalhodederzu/faceDetect/src/haarcascade_eye.xml")) {
+    CascadeClassifier eyeCascade;  
+    if (!eyeCascade.load("C:/Users/diniz/trabalhodederzu/faceDetect/src/haarcascade_frontalface_alt2.xml")) {
         cerr << "Não foi possível carregar o classificador haarcascade_eye.xml." << endl;
         return -1;
     }
-
-    bool powerStopped = false;
-    bool directionStopped = false;
-    int blinkCounter = 0;
-
+    
+    bool eyesDetected = false;
     while (true) {
         Mat frame;
         cap >> frame;
@@ -75,7 +72,7 @@ int main() {
 
         Mat image = background.clone();
 
-        // Detectar olhos na imagem da câmera
+        // Detectar retângulos de olhos na imagem da câmera
         vector<Rect> eyes;
         eyeCascade.detectMultiScale(frame, eyes, 1.1, 2, 0, Size(30, 30));
 
@@ -83,43 +80,26 @@ int main() {
             rectangle(frame, eye, Scalar(0, 0, 255), 2);
         }
 
-        if (eyes.size() > 0) {
-            blinkCounter++;
-            if (blinkCounter % 2 == 1) {
-                powerStopped = true;
-                directionStopped = false;
-            } else {
-                powerStopped = false;
-                directionStopped = true;
-            }
+        if (eyes.empty()) {
+            eyesDetected = false;
+            moveSpeedPower = 0; // Parar a seta de direção quando não houver retângulos de olhos detectados
+            Sleep(10);
         } else {
-            blinkCounter = 0;
+            eyesDetected = true;
+            moveSpeedPower = 100; // Restaurar a velocidade da seta de direção se olhos forem detectados
         }
 
-        if (!powerStopped) {
-            positionXPower += directionPower * moveSpeed;
-            if (positionXPower >= background.cols - setaPower.cols) {
-                positionXPower = background.cols - setaPower.cols;
-                directionPower = -1;
-            } else if (positionXPower <= 0) {
-                positionXPower = 0;
-                directionPower = 1;
-            }
-        }
+        positionXPower += directionPower * moveSpeedPower;
 
-        if (!directionStopped) {
-            positionXDirecao += directionDirecao * moveSpeed;
-            if (positionXDirecao >= background.cols - setaDirecao.cols) {
-                positionXDirecao = background.cols - setaDirecao.cols;
-                directionDirecao = -1;
-            } else if (positionXDirecao <= 0) {
-                positionXDirecao = 0;
-                directionDirecao = 1;
-            }
+        if (positionXPower >= background.cols - setaPower.cols) {
+            positionXPower = background.cols - setaPower.cols;
+            directionPower = -1;
+        } else if (positionXPower <= 0) {
+            positionXPower = 0;
+            directionPower = 1;
         }
 
         int posYPower = (background.rows - setaPower.rows) / 2 + verticalOffsetPower;
-        int posYDirecao = (background.rows - setaDirecao.rows) / 2 + verticalOffsetDirecao;
 
         for (int y = 0; y < setaPower.rows; y++) {
             for (int x = 0; x < setaPower.cols; x++) {
@@ -130,11 +110,14 @@ int main() {
             }
         }
 
-        for (int y = 0; y < setaDirecao.rows; y++) {
-            for (int x = 0; x < setaDirecao.cols; x++) {
-                Vec4b pixel = setaDirecao.at<Vec4b>(y, x);
+        // Sempre adicione a imagem do goleiro
+        int positionXGoleiro = frame.cols / 1.235 - novaLarguraGoleiro / 2;
+        int positionYGoleiro = frame.rows / 1.5 - novaAlturaGoleiro;
+        for (int y = 0; y < novaAlturaGoleiro; y++) {
+            for (int x = 0; x < novaLarguraGoleiro; x++) {
+                Vec4b pixel = goalkeeper.at<Vec4b>(y, x);
                 if (pixel[3] > 0) {
-                    image.at<Vec3b>(posYDirecao + y, positionXDirecao + x) = Vec3b(pixel[0], pixel[1], pixel[2]);
+                    image.at<Vec3b>(positionYGoleiro + y, positionXGoleiro + x) = Vec3b(pixel[0], pixel[1], pixel[2]);
                 }
             }
         }
@@ -146,17 +129,32 @@ int main() {
 
         circle(image, center, radius, color, thickness);
 
-        putText(image, "Power", Point(positionXPower, posYPower + novaAlturaPower + 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 0), 1);
-
-        putText(image, "Direcao", Point(positionXDirecao, posYDirecao + novaAlturaDirecao + 20), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 0, 0), 1);
-
         int cameraWidth = 200;
         int cameraHeight = 150;
         Mat cameraROI = image(Rect(background.cols - cameraWidth, background.rows - cameraHeight, cameraWidth, cameraHeight));
         resize(frame, cameraROI, Size(cameraWidth, cameraHeight));
 
-        imshow("Imagem com Círculo e Setas", image);
+        // retangulos
+        int retanguloWidth = 138;
+        int retanguloHeight = 150;
+        int retanguloSpacing = 0;
+        int retanguloY = 150;
+
+        for (int i = 0; i < 3; i++) {
+            int retanguloX = 300 + (retanguloWidth + retanguloSpacing) * i;
+            Rect retangulo(retanguloX, retanguloY, retanguloWidth, retanguloHeight);
+            rectangle(image, retangulo, Scalar(0, 255, 0), 2);
+        }
+
+        imshow("Imagem com Círculo, Seta de Power e Goleiro", image);
+
+        int key = waitKey(30);
+
+        if (key == 'q') {
+            break;
+        }
     }
+
     destroyAllWindows();
     return 0;
 }
