@@ -6,17 +6,50 @@
 #include <iostream>
 #include <windows.h>
 #include <ctime>
-
+#include <fstream>
+#include <iomanip>
+#include <mmsystem.h>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <vector>
 using namespace std;
 using namespace cv;
 
-bool CheckCollision(const Point& center, const Point& goleiroCenter, int circleRadius, int goleiroRadius) {
-    int distance = sqrt(pow(center.x - goleiroCenter.x, 2) + pow(center.y - goleiroCenter.y, 2));
+bool CheckCollision(const Point& circleCenter, const Rect& goleiroRect, int circleRadius) {
+    Point goleiroCenter(goleiroRect.x + goleiroRect.width / 2, goleiroRect.y + goleiroRect.height / 2);
+
+    int goleiroRadius = max(goleiroRect.width, goleiroRect.height) / 2;
+
+    int distance = sqrt(pow(circleCenter.x - goleiroCenter.x, 2) + pow(circleCenter.y - goleiroCenter.y, 2));
     return distance < (circleRadius + goleiroRadius);
 }
 
+bool CheckGoalCollision(const Point& circleCenter, const Rect& rectangle, int circleRadius) {
+    int positionXbola = circleCenter.x;
+    int positionYbola = circleCenter.y;
+    Point goleiroCenter(rectangle.x + rectangle.width / 2, rectangle.y + rectangle.height / 2);
+
+    int rectangleRadius = max(rectangle.width, rectangle.height) / 2;
+
+    int distance = sqrt(pow(circleCenter.x - goleiroCenter.x, 2) + pow(circleCenter.y - goleiroCenter.y, 2));
+    return distance < (circleRadius + rectangleRadius);
+}
+
 int main() {
-    int highscore = 0; // Defina o highscore como 0
+    int pontuacao = 0;
+    int highscore = 0;
+
+    game:
+    bool back = false;
+    string backgroundmusic = "C:/Users/diniz/trabalhodederzu/faceDetect/sounds/somdetorcida.wav";
+    PlaySoundA(backgroundmusic.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+    
+    string sadtrombone = "C:/Users/diniz/trabalhodederzu/faceDetect/sounds/sadtrombone.wav";
+    string gol = "C:/Users/diniz/trabalhodederzu/faceDetect/sounds/gol.wav";
+
+    int erroustatus = 0;
+    int goalstatus = 0;
 
     Mat background = imread("C:/Users/diniz/trabalhodederzu/faceDetect/src/files/background.jpg");
     if (background.empty()) {
@@ -36,12 +69,6 @@ int main() {
         return -1;
     }
 
-    Mat penaltyPerdido = imread("C:/Users/diniz/trabalhodederzu/faceDetect/src/files/penaltyperdido.jpg", IMREAD_UNCHANGED);
-    if (penaltyPerdido.empty()) {
-        cerr << "Não foi possível carregar a imagem 'penaltyperdido.gif'." << endl;
-        return -1;
-    }
-
     int setaPowerWidth = setaPower.cols;
     int setaPowerHeight = setaPower.rows;
 
@@ -57,15 +84,15 @@ int main() {
     resize(setaPower, setaPower, Size(novaLarguraPower, novaAlturaPower));
     resize(goalkeeper, goalkeeper, Size(novaLarguraGoleiro, novaAlturaGoleiro));
 
-    int moveSpeedPower = 150;
-    int positionXPower = background.cols * 0.25; // Inicie a seta a partir de 20% da tela
+    int moveSpeedPower = 50;
+    int positionXPower = background.cols * 0.25;
     int directionPower = 1;
 
     int verticalOffsetPower = 2;
 
-    int moveSpeedCircle = 30; // Velocidade do círculo em direção à seta
+    int moveSpeedCircle = 30;
 
-    Point center(background.cols / 1.9, background.rows / 1.43); // Posição inicial do círculo
+    Point center(background.cols / 1.9, background.rows / 1.43);
 
     VideoCapture cap(1);
     if (!cap.isOpened()) {
@@ -80,8 +107,16 @@ int main() {
     }
 
     bool eyesDetected = false;
-    bool gameStarted = false; // Variável para controlar o estado do jogo
-    bool colisao = false; 
+    bool gameStarted = false;
+    bool colisao = false;
+    bool colisaogoal = false;
+    bool ballrelease = false;
+
+    int posicaodabolaX = center.x;
+    int posicaodabolaY = center.y;
+
+    namedWindow("Penalty Fever");
+
     while (true) {
         Mat frame;
         cap >> frame;
@@ -92,25 +127,24 @@ int main() {
 
         Mat image = background.clone();
 
-        // Detectar retângulos de olhos na imagem da câmera
         vector<Rect> eyes;
         eyeCascade.detectMultiScale(frame, eyes, 1.1, 2, 0, Size(30, 30));
 
         stringstream ss;
-        ss << "Highscore: " << highscore;
+        ss << "Your Score: " << pontuacao << "  Highscore: " << highscore;
         putText(image, ss.str(), Point(10, 30), FONT_HERSHEY_SIMPLEX, 1, Scalar(255, 255, 255), 2);
 
         if (eyes.empty()) {
             eyesDetected = false;
             if (gameStarted) {
-                moveSpeedPower = 0; // Pare a seta de direção quando não houver retângulos de olhos detectados
+                moveSpeedPower = 0;
                 if (center.x < positionXPower) {
-                    center.x += moveSpeedCircle; // Move o círculo em direção à seta
+                    center.x += moveSpeedCircle;
                 } else if (center.x > positionXPower) {
                     center.x -= moveSpeedCircle;
                 }
                 if (center.y < (background.rows - setaPower.rows) / 5 + verticalOffsetPower) {
-                    center.y += moveSpeedCircle; // Move o círculo em direção à seta
+                    center.y += moveSpeedCircle;
                 } else if (center.y > (background.rows - setaPower.rows) / 5 + verticalOffsetPower) {
                     center.y -= moveSpeedCircle;
                 }
@@ -119,36 +153,74 @@ int main() {
             eyesDetected = true;
             if (!gameStarted) {
                 gameStarted = true;
-                // Inicie o jogo, definindo a velocidade da seta
-                moveSpeedPower = 100;
+                moveSpeedPower = 50;
             }
         }
 
         if (gameStarted) {
+            int key = waitKey(30);
+            if (key == 'q') {
+                return 0;
+            }
             positionXPower += directionPower * moveSpeedPower;
             int positionXGoleiro = frame.cols / 1.235 - novaLarguraGoleiro / 2;
             int positionYGoleiro = frame.rows / 1.5 - novaAlturaGoleiro;
 
-            if (positionXPower >= background.cols * 0.75 - setaPower.cols) { // Limite a posição da seta a 80% da tela
+            Rect goleirorect(positionXGoleiro, positionYGoleiro, goalkeeperWidth, goalkeeperHeight);
+            int circleRadius = 10;
+
+            int retanguloWidth = 140;
+            int retanguloHeight = 150;
+            int retanguloSpacing = 150;
+            int retanguloY = 150;
+            int retanguloX = 300 + (retanguloWidth + retanguloSpacing);
+            Rect retangulo(retanguloX, retanguloY, retanguloWidth, retanguloHeight);            
+            rectangle(image, retangulo, Scalar(0, 255, 0), 2);
+            
+            if (CheckCollision(center, goleirorect, circleRadius)) {
+                colisao = true;
+            } else {
+                colisao = false;
+            }
+            if (CheckGoalCollision(center, retangulo, circleRadius)) {
+                colisaogoal = true;
+            } else {
+                colisaogoal = false;
+            }
+
+            if (colisao == true && ballrelease == false) {        
+                Mat penaltyPerdido = imread("C:/Users/diniz/trabalhodederzu/faceDetect/src/files/tialeila.jpg", IMREAD_UNCHANGED);
+                PlaySoundA(sadtrombone.c_str(), NULL, SND_FILENAME | SND_ASYNC);
+                if (!penaltyPerdido.empty()) {
+                    imshow("Penalty Fever", penaltyPerdido);
+                    int key = waitKey(0);
+                    if (key == 'q') {
+                    ofstream currentscore;
+                    currentscore.open("C:/Users/diniz/trabalhodederzu/faceDetect/highscore.txt", ios::app);
+                    if (currentscore.is_open()){
+                        currentscore << pontuacao;
+                        return 1;
+                    }
+                    ballrelease = true;               
+                }
+            }
+        }
+
+            if (colisaogoal == true && ballrelease == false) {     
+                PlaySoundA(gol.c_str(), NULL, SND_FILENAME | SND_ASYNC);   
+                pontuacao++;
+                ballrelease = true;
+                back = true;
+                Sleep(5);
+            }
+            if(back == true){
+                goto game;
+            }
+
+            if (positionXPower >= background.cols * 0.75 - setaPower.cols) {
                 positionXPower = background.cols * 0.75 - setaPower.cols;
                 directionPower = -1;
-                // Verificar a colisão entre o círculo e o goleiro
-                Point goleiroCenter(positionXGoleiro + novaLarguraGoleiro / 2, positionYGoleiro + novaAlturaGoleiro / 2);
-                int circleRadius = 10; // Raio do círculo
-                int goleiroRadius = novaLarguraGoleiro / 15; 
-                if (CheckCollision(center, goleiroCenter, circleRadius, goleiroRadius)) {
-                    colisao = true;
-                } else {
-                    colisao = false;
-                }
-
-                // Exibir a imagem "penaltyperdido.gif" se houver colisão
-                if (colisao) {
-                    Mat penaltyPerdidoROI = image(Rect(center.x - penaltyPerdido.cols / 2, center.y - penaltyPerdido.rows / 2, penaltyPerdido.cols, penaltyPerdido.rows));
-                    penaltyPerdido.copyTo(penaltyPerdidoROI);
-                }
-
-            } else if (positionXPower <= background.cols * 0.25) { // Limite a posição da seta a 20% da tela
+            } else if (positionXPower <= background.cols * 0.25) {
                 positionXPower = background.cols * 0.25;
                 directionPower = 1;
             }
@@ -162,7 +234,7 @@ int main() {
                 }
             }
         }
-        
+
         int positionXGoleiro = frame.cols / 1.235 - novaLarguraGoleiro / 2;
         int positionYGoleiro = frame.rows / 1.5 - novaAlturaGoleiro;
         for (int y = 0; y < novaAlturaGoleiro; y++) {
@@ -181,30 +253,29 @@ int main() {
         Mat cameraROI = image(Rect(background.cols - cameraWidth, background.rows - cameraHeight, cameraWidth, cameraHeight));
         resize(frame, cameraROI, Size(cameraWidth, cameraHeight));
 
-        // retângulos
-        int retanguloWidth = 138;
+        int retanguloWidth = 140;
         int retanguloHeight = 150;
-        int retanguloSpacing = 0;
+        int retanguloSpacing = 150;
         int retanguloY = 150;
 
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 2; i++) {
             int retanguloX = 300 + (retanguloWidth + retanguloSpacing) * i;
             Rect retangulo(retanguloX, retanguloY, retanguloWidth, retanguloHeight);
             rectangle(image, retangulo, Scalar(0, 255, 0), 2);
         }
+        Rect goleirorect(positionXGoleiro, positionYGoleiro, goalkeeperWidth, goalkeeperHeight);
+        rectangle(image, goleirorect, Scalar(0, 255, 0), 2);
 
         imshow("Penalty Fever", image);
 
         int key = waitKey(30);
-
         if (key == 'q') {
-            break;
+            return 2;
         }
     }
 
     destroyAllWindows();
 
-    cout << "Highscore: " << highscore << endl; // Exibe o highscore no final do programa
-
+    cout << "Highscore: " << pontuacao << endl;
     return 0;
 }
